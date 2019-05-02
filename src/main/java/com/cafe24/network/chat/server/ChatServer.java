@@ -24,7 +24,6 @@ public class ChatServer{
 			serverSocket.setReuseAddress( true );
 			
 			//2.바인딩(binding)
-			//	: Socket에 SocketAddress(IPAddress + Port)를 바인딩 한다.
 			serverSocket.bind(new InetSocketAddress("0.0.0.0", 7000));
 			
 			listWriters = new ArrayList<Writer>();
@@ -55,6 +54,5 @@ public class ChatServer{
 	
 	private static void log( String log ) {
 		System.out.println( "[server] :" + log );
-
 	}
 }

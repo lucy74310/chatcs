@@ -13,10 +13,11 @@ import java.util.List;
 
 public class ChatServerThread extends Thread {
 	
-	private static Socket socket = null;
-	private static String nickname = null;
-	private static List<Writer> listWriters = null;
-	
+	private Socket socket = null;
+	private String nickname = null;
+	private List<Writer> listWriters = null;
+	private BufferedReader br = null;
+	private PrintWriter pw = null;
 	
 	public ChatServerThread(Socket socket,List<Writer> listWriters) {
 		this.socket = socket;
@@ -35,34 +36,39 @@ public class ChatServerThread extends Thread {
 		try {
 
 			// 1. IOStream 받아오기
-			BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream(), "utf-8"));
+			br = new BufferedReader(new InputStreamReader(socket.getInputStream(), "utf-8"));
 
-			PrintWriter pr = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "utf-8"), true);
+			pw = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "utf-8"), true);
 
 			while (true) {
 				// 2. 데이터 읽기
 				String data = br.readLine();
 				if (data == null) {
 					log("클라이언트로 부터 연결 끊김");
-					doQuit( pr );
+					doQuit();
 					break;
 				}
-				System.out.println("[server] received:" + data);
+				log(" reveived : " + data);
 
 				// 3.프로토콜 분석
 				String[] tokens = data.split(":");
+				
+				
 				if ("join".equals(tokens[0])) {
-					doJoin(tokens[1], pr);
+					doJoin(tokens[1]);
 				} else if ("message".equals(tokens[0])) {
-					doMessage(tokens[1]);
+					
+					int lng = tokens.length-1;
+					String[] message = new String[lng];
+					System.arraycopy( tokens, 1, message, 0, lng );
+					String msgWithoutProtocol = String.join( ":" , message );		
+					doMessage(msgWithoutProtocol);
+					
 				} else if ("quit".equals(tokens[0])) {
-					doQuit(pr);
+					doQuit();
+					break;
 				} else {
-					log("알 수 없는 요청 (" + tokens[0] + ")");
 				}
-
-				// 6. 데이터 쓰기
-				pr.println(data);
 
 			}
 
@@ -81,61 +87,58 @@ public class ChatServerThread extends Thread {
 		}
 	}
 
-	private void doJoin(String nickname, PrintWriter pr) {
+	private void doJoin(String nickname) {
 		this.nickname = nickname;
 		
-		String data = nickname + "님이 참여하였습니다.";
-		broadcast(data);
+		String data = "message:" + nickname + " 님이 참여하였습니다.";
 		
 		/* writer pool 에 저장 */
-		addWriter( pr );
+		addWriter( pw );
 		
+		broadcast(data);
 		
 		//ack
-		pr.println("join:ok");
-		pr.flush();
+		pw.println("join:ok");
+		pw.flush();
+		
 	}
 	private void addWriter(Writer pr) {
 		synchronized( listWriters ) {
 			listWriters.add( pr );
 		}
 	}
-	private void broadcast ( String data ) {
+	private void broadcast ( String data) {
 		synchronized( listWriters ) {
 			for( Writer writer : listWriters ) {
-				PrintWriter pr = (PrintWriter) writer ;
-				pr.println( data );
-				pr.flush();
+				PrintWriter otherPw = (PrintWriter) writer ;
+				if( otherPw != pw) {
+					otherPw.println( data );
+				}
 			}
-			
 		}
-	}
-	private void doMessage(String token) {
-		broadcast( nickname + ":" + token );
-	}
-
-	private void doQuit( Writer writer ) {
-		removeWriter( writer );
-		
-		String data = nickname + "님이 퇴장 하였습니다.";
-		
-		broadcast( data );
-
 	}
 	
-	private void removeWriter( Writer writer ) {
-		int i = 0;
+	private void doMessage(String token) {
+		broadcast("message:" + nickname + " : " + token );
+	}
+
+	private void doQuit() {
+		removeWriter();
+		
+		String data = "message:" + nickname + " 님이 퇴장 하였습니다.";
+		
+		broadcast( data );
+		
+	}
+	
+	private void removeWriter() {
+		//System.out.println(listWriters.indexOf((Writer)pw));
 		synchronized( listWriters ) {
-			for( Writer wr : listWriters ) {
-				if ( writer == wr ) {
-					listWriters.remove( i );
-				}
-				i++;
-			}
+			listWriters.removeIf( wr -> ( PrintWriter ) wr == pw );
 		}
+		//System.out.println(listWriters.indexOf((Writer)pw));
 	}
 	private void log( String log ) {
-		System.out.println( "[server] :" + log );
-
+		System.out.println( "[server] " + log );
 	}
 }
